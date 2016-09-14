@@ -6,6 +6,7 @@ use futures::Async;
 use mio;
 
 use reactor::{Handle, PollEvented};
+use io::{Io, IoFuture, IoStream};
 
 /// An I/O object representing a UDP socket.
 pub struct UdpSocket {
@@ -240,6 +241,26 @@ impl UdpSocket {
                               multiaddr: &Ipv6Addr,
                               interface: u32) -> io::Result<()> {
         self.io.get_ref().leave_multicast_v6(multiaddr, interface)
+    }
+}
+
+impl Io for UdpSocket {
+    fn poll_read(&mut self) -> Async<()> {
+        <UdpSocket>::poll_read(self)
+    }
+
+    fn poll_write(&mut self) -> Async<()> {
+        <UdpSocket>::poll_write(self)
+    }
+}
+
+impl<'a> Io for &'a UdpSocket {
+    fn poll_read(&mut self) -> Async<()> {
+        <UdpSocket>::poll_read(self)
+    }
+
+    fn poll_write(&mut self) -> Async<()> {
+        <UdpSocket>::poll_write(self)
     }
 }
 
