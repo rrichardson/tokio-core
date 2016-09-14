@@ -1,8 +1,9 @@
 use std::io;
 use std::net::{self, SocketAddr, Ipv4Addr, Ipv6Addr};
 use std::fmt;
+use std::mem;
 
-use futures::Async;
+use futures::{Future, Async, Poll};
 use mio;
 
 use reactor::{Handle, PollEvented};
@@ -39,6 +40,17 @@ impl UdpSocket {
     pub fn from_socket(socket: net::UdpSocket,
                        handle: &Handle) -> io::Result<UdpSocket> {
         let udp = try!(mio::udp::UdpSocket::from_socket(socket));
+        UdpSocket::new(udp, handle)
+    }
+
+    /// Creates a new independently owned handle to the underlying socket.
+    ///
+    /// The returned UdpSocket is a reference to the same socket that this
+    /// object references.
+    /// Both handles will read and write the same port, and options set on one 
+    /// socket will be propagated to the other. 
+    pub fn try_clone(&self, handle: &Handle) -> io::Result<UdpSocket> {
+        let udp = try!(self.io.get_ref().try_clone());
         UdpSocket::new(udp, handle)
     }
 
@@ -85,6 +97,34 @@ impl UdpSocket {
             Err(e) => Err(e),
         }
     }
+
+    /// Creates a future that will write the entire contents of the buffer `buf` to
+    /// the stream `a` provided.
+    ///
+    /// The returned future will not return until all the data has been written, and
+    /// the future will resolve to the stream as well as the buffer (for reuse if
+    /// needed).
+    ///
+    /// Any error which happens during writing will cause both the stream and the
+    /// buffer to get destroyed.
+    ///
+    /// The `buf` parameter here only requires the `AsRef<[u8]>` trait, which should
+    /// be broadly applicable to accepting data which can be converted to a slice.
+    /// The `Window` struct is also available in this crate to provide a different
+    /// window into a slice if necessary.
+    pub fn send_all_to<'a, T>(&'a self, buf: T, addr : &'a SocketAddr) -> SendAllTo<T>
+        where T: AsRef<[u8]>,
+    {
+        SendAllTo {
+            state: UdpState::Writing {
+                sock: self,
+                addr: addr,
+                buf: buf,
+                pos: 0,
+            },
+        }
+    }
+
 
     /// Receives data from the socket. On success, returns the number of bytes
     /// read and the address from whence the data came.
@@ -243,11 +283,65 @@ impl UdpSocket {
     }
 }
 
+
 impl fmt::Debug for UdpSocket {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         self.io.get_ref().fmt(f)
     }
 }
+
+/// A future used to write the entire contents of some data to a stream.
+///
+/// This is created by the [`write_all`] top-level method.
+///
+/// [`write_all`]: fn.write_all.html
+pub struct SendAllTo<'a, T> {
+    state: UdpState<'a, T>,
+}
+
+enum UdpState<'a, T> {
+    Writing {
+        sock: &'a UdpSocket,
+        buf: T,
+        addr: &'a SocketAddr,
+        pos: usize,
+    },
+    Empty,
+}
+
+
+fn zero_write() -> io::Error {
+    io::Error::new(io::ErrorKind::WriteZero, "zero-length write")
+}
+
+impl<'a, T> Future for SendAllTo<'a, T>
+    where T: AsRef<[u8]>,
+{
+    type Item = T;
+    type Error = io::Error;
+
+    fn poll(&mut self) -> Poll<T, io::Error> {
+        match self.state {
+            UdpState::Writing { ref sock, ref buf, ref addr, ref mut pos } => {
+                let buf = buf.as_ref();
+                while *pos < buf.len() {
+                    let n = try_nb!(sock.send_to(&buf[*pos..], addr));
+                    *pos += n;
+                    if n == 0 {
+                        return Err(zero_write())
+                    }
+                }
+            }
+            UdpState::Empty => panic!("poll a SendAllTo after it's done"),
+        }
+
+        match mem::replace(&mut self.state, UdpState::Empty) {
+            UdpState::Writing { buf, .. } => Ok((buf).into()),
+            UdpState::Empty => panic!(),
+        }
+    }
+}
+
 
 #[cfg(unix)]
 mod sys {
