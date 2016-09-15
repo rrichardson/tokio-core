@@ -8,7 +8,6 @@ mod udp;
 mod udp_stream;
 
 use std::io;
-use std::vec;
 
 pub use self::tcp::{TcpStream, TcpStreamNew};
 pub use self::tcp::{TcpListener, Incoming};
@@ -25,54 +24,23 @@ pub use self::udp_stream::UdpStream;
 /// which implement the Buffer trait
 ///
 pub trait BufferPool {
-    type Item : Buffer + Sized + 'static;
-    fn get(&self) -> Result<Self::Item, io::Error>;
+    /// Function which produces a new buffer on demand.  In a real server
+    /// scenario, this might run out of memory, hence the possibility for
+    /// an io::Error
+    fn get(&self) -> Result<Vec<u8>, io::Error>;
 }
 
-///
-/// Buffer
-/// Basic set of functionality required to allow the reading
-/// and writing of socket data via streams.
-///
-pub trait Buffer : Sized + 'static {
-    fn as_mut_slice(&mut self) -> &mut [u8];
-    fn as_slice(&self) -> & [u8];
-    fn advance(&mut self, usize);
-}
-
-
-
-/// VecBuffer
-/// This is a 1-use buffer, meant for demonstration purposes
-/// This would be neither efficient no correct for multiple
-/// reads
-struct VecBuffer {
-    buf : Vec<u8>
-}
-
-impl Buffer for VecBuffer {
-    fn as_mut_slice(&mut self) -> &mut [u8] {
-        self.as_mut_slice()
-    }
-    
-    fn as_slice(&self) -> & [u8] {
-        self.as_slice()
-    }
-
-    fn advance(&mut self, amt : usize) {
-        unsafe { self.set_len(amt) }
-    }
-}
 
 ///
 /// VecBufferPool
 /// Yep
-struct VecBufferPool {
+pub struct VecBufferPool {
     size : usize
 }
 
 impl VecBufferPool {
-    fn new(sz : usize) -> VecBufferPool {
+    ///contstruct a new Buffer Pool
+    pub fn new(sz : usize) -> VecBufferPool {
         VecBufferPool {
             size : sz
         }
@@ -80,8 +48,7 @@ impl VecBufferPool {
 }
 
 impl BufferPool for VecBufferPool {
-    type Item = VecBufferPool;
-    fn get(&self) -> Result<VecBuffer, io::Error> {
-        Ok(VecBuffer{ buf : vec![0; self.size] })
+    fn get(&self) -> Result<Vec<u8>, io::Error> {
+        Ok(vec![0; self.size])
     }
 }

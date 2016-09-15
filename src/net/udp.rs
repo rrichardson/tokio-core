@@ -6,7 +6,6 @@ use futures::Async;
 use mio;
 
 use reactor::{Handle, PollEvented};
-use io::{Io, IoFuture, IoStream};
 
 /// An I/O object representing a UDP socket.
 pub struct UdpSocket {
