@@ -15,6 +15,18 @@ pub use self::udp::{UdpSocket};
 pub use self::udp_stream::UdpStream;
 
 ///
+/// Buffer
+/// Requires the minimal amount of functionality for futures::Streams over
+/// sockets to provide a never-ending supply of buffers filled with the results
+/// of Socket::read
+///
+pub trait Buffer : AsMut<[u8]> {
+    ///After reading, use this method to re-set the end of the readable data
+    ///to the new offset.
+    fn advance(&mut self, usize);
+}
+
+///
 /// BufferPool
 /// futures::Streams produce a potentially never-ending supply of
 /// messages. Therefore to turn things like sockets into streams
@@ -24,12 +36,46 @@ pub use self::udp_stream::UdpStream;
 /// which implement the Buffer trait
 ///
 pub trait BufferPool {
+
+    ///Something that implements the Buffer trait and constraints
+    type Item : Buffer;
+
     /// Function which produces a new buffer on demand.  In a real server
     /// scenario, this might run out of memory, hence the possibility for
     /// an io::Error
-    fn get(&self) -> Result<Vec<u8>, io::Error>;
+    fn get(&self) -> Result<Self::Item, io::Error>;
 }
 
+///
+/// Simple example of an implementation of Buffer
+/// This is neither efficient nor correct for multiple
+/// uses, don't use this in production unless you know
+/// what you're doing. 
+pub struct VecBuffer {
+    buf : Vec<u8>
+}
+
+impl VecBuffer {
+
+    /// Construct a new VecBuffer
+    pub fn new(sz : usize) -> VecBuffer {
+        VecBuffer { buf : vec![0; sz] }
+    }
+}
+
+
+impl Buffer for VecBuffer {
+    fn advance(&mut self, sz : usize) {
+        unsafe { self.buf.set_len(sz) };
+    }
+
+}
+
+impl AsMut<[u8]> for VecBuffer {
+    fn as_mut(&mut self) -> &mut [u8] {
+        self.buf.as_mut_slice()
+    }
+}
 
 ///
 /// VecBufferPool
@@ -48,7 +94,8 @@ impl VecBufferPool {
 }
 
 impl BufferPool for VecBufferPool {
-    fn get(&self) -> Result<Vec<u8>, io::Error> {
-        Ok(vec![0; self.size])
+    type Item = VecBuffer;
+    fn get(&self) -> Result<Self::Item, io::Error> {
+        Ok(VecBuffer::new(self.size))
     }
 }

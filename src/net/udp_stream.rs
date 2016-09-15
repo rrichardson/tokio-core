@@ -2,7 +2,7 @@
 use std::io;
 use std::net::SocketAddr;
 
-use net::{ UdpSocket, BufferPool };
+use net::{ UdpSocket, BufferPool, Buffer };
 use futures::{Async, Poll};
 use futures::stream::Stream;
 
@@ -28,7 +28,7 @@ impl<B : BufferPool> UdpStream<B> {
 }
 
 impl<B: BufferPool> Stream for UdpStream<B> {
-    type Item = (Vec<u8>, SocketAddr);
+    type Item = (B::Item, SocketAddr);
     type Error = io::Error;
 
     fn poll(&mut self) -> Poll<Option<Self::Item>, Self::Error> {
@@ -36,9 +36,9 @@ impl<B: BufferPool> Stream for UdpStream<B> {
             return Ok(Async::NotReady)
         }
         let mut buf = try!(self.pool.get());
-        match self.socket.recv_from(buf.as_mut_slice()) {
+        match self.socket.recv_from(buf.as_mut()) {
             Ok((amt, addr)) => { 
-                unsafe { buf.set_len(amt); };
+                buf.advance(amt);
                 Ok(Async::Ready(Some((buf, addr)))) },
             Err(ref e) if e.kind() == io::ErrorKind::WouldBlock => {
                 Ok(Async::NotReady)
