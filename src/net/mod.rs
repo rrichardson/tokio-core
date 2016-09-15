@@ -5,14 +5,20 @@
 
 mod tcp;
 mod udp;
-mod udp_stream;
+mod stream_udp;
+mod stream_tcp;
 
 use std::io;
 
 pub use self::tcp::{TcpStream, TcpStreamNew};
 pub use self::tcp::{TcpListener, Incoming};
 pub use self::udp::{UdpSocket};
-pub use self::udp_stream::UdpStream;
+
+/// Implementations of futures::streams for TCP and UDP
+pub mod stream {
+    pub use super::stream_udp::UdpStream as Udp;
+    pub use super::stream_tcp::TcpStream as Tcp;
+}
 
 ///
 /// Buffer
