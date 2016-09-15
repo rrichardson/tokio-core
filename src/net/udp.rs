@@ -244,25 +244,6 @@ impl UdpSocket {
     }
 }
 
-impl Io for UdpSocket {
-    fn poll_read(&mut self) -> Async<()> {
-        <UdpSocket>::poll_read(self)
-    }
-
-    fn poll_write(&mut self) -> Async<()> {
-        <UdpSocket>::poll_write(self)
-    }
-}
-
-impl<'a> Io for &'a UdpSocket {
-    fn poll_read(&mut self) -> Async<()> {
-        <UdpSocket>::poll_read(self)
-    }
-
-    fn poll_write(&mut self) -> Async<()> {
-        <UdpSocket>::poll_write(self)
-    }
-}
 
 impl fmt::Debug for UdpSocket {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
