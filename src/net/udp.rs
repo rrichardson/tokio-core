@@ -43,17 +43,6 @@ impl UdpSocket {
         UdpSocket::new(udp, handle)
     }
 
-    /// Creates a new independently owned handle to the underlying socket.
-    ///
-    /// The returned UdpSocket is a reference to the same socket that this
-    /// object references.
-    /// Both handles will read and write the same port, and options set on one 
-    /// socket will be propagated to the other. 
-    pub fn try_clone(&self, handle: &Handle) -> io::Result<UdpSocket> {
-        let udp = try!(self.io.get_ref().try_clone());
-        UdpSocket::new(udp, handle)
-    }
-
     /// Returns the local address that this stream is bound to.
     pub fn local_addr(&self) -> io::Result<SocketAddr> {
         self.io.get_ref().local_addr()
@@ -101,8 +90,9 @@ impl UdpSocket {
     /// Creates a future that will write the entire contents of the buffer `buf` to
     /// the stream `a` provided.
     ///
-    /// The returned future will not return until all the data has been written, and
-    /// the future will resolve to the stream as well as the buffer (for reuse if
+    /// The returned future will return after data has been written to the outbound
+    /// socket. 
+    /// The future will resolve to the stream as well as the buffer (for reuse if
     /// needed).
     ///
     /// Any error which happens during writing will cause both the stream and the
@@ -112,15 +102,14 @@ impl UdpSocket {
     /// be broadly applicable to accepting data which can be converted to a slice.
     /// The `Window` struct is also available in this crate to provide a different
     /// window into a slice if necessary.
-    pub fn send_all_to<'a, T>(&'a self, buf: T, addr : &'a SocketAddr) -> SendAllTo<T>
+    pub fn send_dgram<'a, T>(&'a self, buf: T, addr : &'a SocketAddr) -> SendDGram<T>
         where T: AsRef<[u8]>,
     {
-        SendAllTo {
+        SendDGram {
             state: UdpState::Writing {
                 sock: self,
                 addr: addr,
                 buf: buf,
-                pos: 0,
             },
         }
     }
@@ -295,7 +284,7 @@ impl fmt::Debug for UdpSocket {
 /// This is created by the [`write_all`] top-level method.
 ///
 /// [`write_all`]: fn.write_all.html
-pub struct SendAllTo<'a, T> {
+pub struct SendDGram<'a, T> {
     state: UdpState<'a, T>,
 }
 
@@ -304,7 +293,6 @@ enum UdpState<'a, T> {
         sock: &'a UdpSocket,
         buf: T,
         addr: &'a SocketAddr,
-        pos: usize,
     },
     Empty,
 }
@@ -314,7 +302,11 @@ fn zero_write() -> io::Error {
     io::Error::new(io::ErrorKind::WriteZero, "zero-length write")
 }
 
-impl<'a, T> Future for SendAllTo<'a, T>
+fn incomplete_write(reason : &str) -> io::Error {
+    io::Error::new(io::ErrorKind::Other, reason)
+}
+
+impl<'a, T> Future for SendDGram<'a, T>
     where T: AsRef<[u8]>,
 {
     type Item = T;
@@ -322,14 +314,14 @@ impl<'a, T> Future for SendAllTo<'a, T>
 
     fn poll(&mut self) -> Poll<T, io::Error> {
         match self.state {
-            UdpState::Writing { ref sock, ref buf, ref addr, ref mut pos } => {
+            UdpState::Writing { ref sock, ref buf, ref addr} => {
                 let buf = buf.as_ref();
-                while *pos < buf.len() {
-                    let n = try_nb!(sock.send_to(&buf[*pos..], addr));
-                    *pos += n;
-                    if n == 0 {
-                        return Err(zero_write())
-                    }
+                let n = try_nb!(sock.send_to(&buf, addr));
+                if n == 0 {
+                    return Err(zero_write())
+                }
+                if n != buf.len() {
+                    return Err(incomplete_write("Failed to send entire message in datagram"))
                 }
             }
             UdpState::Empty => panic!("poll a SendAllTo after it's done"),

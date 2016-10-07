@@ -9,12 +9,11 @@ use std::str;
 use futures::Future;
 use futures::stream::Stream;
 use tokio_core::reactor::Core;
-use tokio_core::net::stream::Udp;
+use tokio_core::net::stream::Udp as UdpStream;
 use tokio_core::net::{ UdpSocket, ByteBufPool }; 
-use bytes::{Buf, MutBuf, ByteBuf};
-use bytes::alloc::BufferPool;
 use tokio_timer::Timer;
 use std::time::Duration;
+use std::sync::Arc;
 
 fn main() {
     let mut core = Core::new().unwrap();
@@ -24,24 +23,23 @@ fn main() {
     let clipool = ByteBufPool::new(1024 * 8);
     let srvpool = ByteBufPool::new(1024 * 8);
 
-    let srv = UdpSocket::bind(&srvaddr, &core.handle()).unwrap();
-    let cli = UdpSocket::bind(&cliaddr, &core.handle()).unwrap();
+    let srv = Arc::new(UdpSocket::bind(&srvaddr, &core.handle()).unwrap());
+    let cli = Arc::new(UdpSocket::bind(&cliaddr, &core.handle()).unwrap());
    
-    let srv2 = srv.try_clone(&core.handle()).unwrap();
-    let cli2 = cli.try_clone(&core.handle()).unwrap();
-    let cli3 = cli.try_clone(&core.handle()).unwrap();
+    let srv2 = srv.clone();
+    let cli2 = cli.clone();
 
-    let srvstream = Udp::new(srv, srvpool);
-    let clistream = Udp::new(cli, clipool);
+    let srvstream = UdpStream::new(srv, srvpool);
+    let clistream = UdpStream::new(cli, clipool);
     
-    let app = cli3.send_all_to(b"PING", &srvaddr).and_then(|_| {
-        let server = srvstream.for_each(|(mut buf, addr)| { 
+    let app = cli2.send_dgram(b"PING", &srvaddr).and_then(|_| {
+        let server = srvstream.for_each(|(buf, addr)| { 
             println!("{}", str::from_utf8(buf.bytes()).unwrap());
-            srv2.send_all_to(b"PONG", &addr).map(|_| ()).wait()
+            srv2.send_dgram(b"PONG", &addr).map(|_| ()).wait()
         });
-        let client = clistream.for_each(|(mut buf, addr)| { 
+        let client = clistream.for_each(|(buf, addr)| { 
             println!("{}", str::from_utf8(buf.bytes()).unwrap());
-            cli2.send_all_to(b"PING", &addr).map(|_| ()).wait()
+            cli2.send_dgram(b"PING", &addr).map(|_| ()).wait()
         });
         server.join(client)
     });

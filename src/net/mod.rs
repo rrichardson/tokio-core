@@ -26,7 +26,8 @@ pub mod stream {
 
 ///
 /// ByteBufPool
-/// Yep
+/// Example naieve implementation of the BufferPool
+///
 pub struct ByteBufPool {
     size : usize
 }
