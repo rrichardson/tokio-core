@@ -14,6 +14,7 @@ use tokio_core::net::{ UdpSocket, ByteBufPool };
 use tokio_timer::Timer;
 use std::time::Duration;
 use std::sync::Arc;
+use bytes::Buf;
 
 fn main() {
     let mut core = Core::new().unwrap();

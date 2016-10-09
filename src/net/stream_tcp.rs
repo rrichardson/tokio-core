@@ -3,8 +3,7 @@ use std::io;
 use std::io::{Read};
 
 use net::TcpStream as NetTcpStream;
-use bytes::MutBuf;
-use bytes::alloc::BufferPool;
+use bytes::{ MutBuf, BufferPool };
 use futures::{Async, Poll};
 use futures::stream::Stream;
 

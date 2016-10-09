@@ -3,8 +3,7 @@ use std::io;
 use std::net::SocketAddr;
 use std::convert::AsRef;
 use net::{ UdpSocket };
-use bytes::MutBuf;
-use bytes::alloc::BufferPool;
+use bytes::{ MutBuf, BufferPool };
 use futures::{Async, Poll};
 use futures::stream::Stream;
 

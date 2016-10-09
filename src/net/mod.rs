@@ -8,10 +8,9 @@ mod udp;
 mod stream_udp;
 mod stream_tcp;
 
-use std::io;
 use std::fmt::{self};
-use bytes::{MutByteBuf};
-use bytes::alloc::BufferPool;
+use bytes::buf::{SliceBuf};
+use bytes::{BufferPool, AllocError};
 
 pub use self::tcp::{TcpStream, TcpStreamNew};
 pub use self::tcp::{TcpListener, Incoming};
@@ -42,9 +41,9 @@ impl ByteBufPool {
 }
 
 impl BufferPool for ByteBufPool {
-    type Item = MutByteBuf;
-    fn get(&self) -> Result<Self::Item, io::Error> {
-        Ok(MutByteBuf::with_capacity(self.size))
+    type Item = SliceBuf;
+    fn get(&self) -> Result<Self::Item, AllocError> {
+        Ok(SliceBuf::with_capacity(self.size))
     }
 }
 
